@@ -1,0 +1,9 @@
+# Real vaults, keys and shares are personal data: never commit them.
+vault.json
+.*.tmp
+*.pem
+*.share.json
+
+__pycache__/
+*.pyc
+.venv/
