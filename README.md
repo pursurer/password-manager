@@ -167,12 +167,16 @@ signed, so Bob cannot prove who made it; anyone with his public key can make one
 
 ## Libraries
 
-- [`argon2-cffi`](https://argon2-cffi.readthedocs.io/) — `PasswordHasher` hashes and
-  verifies the master password (Argon2id, random salt, parameters inside the hash string).
-- [`cryptography`](https://cryptography.io/) — `Argon2id` key derivation (version 44 or
-  newer), `AESGCM`, RSA-OAEP and encrypted private keys.
+| Block | Library and call | Why this library |
+|---|---|---|
+| 1. Master password hash | [`argon2-cffi`](https://argon2-cffi.readthedocs.io/) `PasswordHasher` (Argon2id) | Wraps the reference Argon2 implementation. One call makes the random salt and stores salt and costs inside the hash string; `verify` reads them back. |
+| 2. Key derivation | [`cryptography`](https://cryptography.io/) `Argon2id` (version 44 or newer) | Returns raw key bytes of the length we ask for (32 for AES-256), from our own salt. |
+| 3. Vault encryption | `cryptography` `AESGCM` | Authenticated encryption in one call: `decrypt` checks the tag and raises `InvalidTag` instead of returning garbage. |
+| 4. Generator | Python standard library `secrets` | Reads the operating system's secure random source; nothing to install. |
+| Bonus A | `cryptography` RSA-OAEP, PKCS#8 encrypted private keys | The same maintained library as block 3; OAEP padding is built in. |
 
-Both are widely used, maintained libraries; no cryptography is written by hand here.
+These are the libraries the course rule names. Both are widely used and maintained, and no
+cryptography is written by hand here.
 
 ## Tests
 
