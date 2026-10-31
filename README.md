@@ -1,6 +1,6 @@
 # Password manager — Computer Security, Project 2
 
-**Group:** HAOJIE SONG (2023905496)
+**Student:** HAOJIE SONG (2023905496)
 
 A command-line password manager in Python. All entries live in one encrypted file,
 `vault.json`. Only the master password, which is never stored, opens it.
