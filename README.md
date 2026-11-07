@@ -1,6 +1,6 @@
 # Password manager — Computer Security, Project 2
 
-**Student:** HAOJIE SONG (2023905496)
+**Group:** HAOJIE SONG (2023905496), ZIQIAN YU (2023902046), ANGRAN YU (2023900899)
 
 A command-line password manager in Python. All entries live in one encrypted file,
 `vault.json`. Only the master password, which is never stored, opens it.
@@ -42,46 +42,64 @@ These are the libraries the course rule names; no cryptography is written by han
 ## Why each choice is correct
 
 **1. Why Argon2 for the master password, and not SHA-256 or AES?**
-AES is encryption, so the password could be decrypted again, and the AES key would have to be
-stored somewhere. The master password must never be recoverable, so it needs a one-way hash.
-SHA-256 is one-way but very fast, which helps an attacker: in the Class 5 lab we measured about
-3.5 million MD5 guesses per second against about 10 Argon2id guesses per second. Argon2 is slow
-on purpose and needs 64 MiB per guess, so GPUs gain little, and its random salt makes equal
-passwords hash differently.
+The master password must never be recoverable. AES is two-way: with the key, the password can be
+decrypted back. The key has to be stored somewhere, so it can be stolen together with the database.
+A plain SHA-256 hash is one-way, but it is very fast and has no salt, so the same password always
+gives the same hash, and common passwords can be found at once in a rainbow table. Even with a salt
+it is too fast: in the Class 5 lab we measured about 3.5 million MD5 guesses per second, and
+SHA-256 is a fast hash of the same kind. Argon2 adds a random salt, so the same password gives a
+different hash each time, and a precomputed table is useless. It is also slow and needs a lot of
+memory (3 passes over 64 MiB), so the attacker needs much more time and memory for every guess:
+about 10 guesses per second in our lab. The salt stops one guess from working on many accounts,
+and the slowness stops many guesses on one account. We need both.
 
-**2. Why derive the key from the master password instead of storing a key file?**
-A key file next to the vault is stolen together with it (a backup, a synced folder, a lost
-laptop), and then the vault opens without any password. With a derived key, the only secret is
-the master password in the user's head, and every guess costs one Argon2 run. The key uses a
-different salt from the stored hash: with the same salt the stored hash would be the key itself.
-The cost is that a forgotten master password cannot be recovered.
+**2. Why derive the encryption key from the master password instead of storing a key file?**
+If the key is stored in a file next to the vault, it is stolen together with the vault. The
+attacker does not need to guess anything: the key opens the vault at once, and it keeps working,
+so all our passwords can be read again and again. With a derived key there is no key on the disk;
+the only secret is the master password in the user's head. The attacker can only guess the master
+password, and every guess costs one Argon2 run, which is slow and needs a lot of memory. The key
+uses a different salt from the stored hash, so the stored hash cannot be used as the key. The cost
+is that a forgotten master password cannot be recovered: the vault can never be opened again.
 
-**3. Why AES-GCM and not AES without authentication? What does GCM buy you?**
-AES alone only hides the data. A changed ciphertext still decrypts, into garbage or, in CTR
-mode, into exactly the bits the attacker flipped, and the program would accept it. GCM adds an
-authentication tag: on decrypt, any change to the ciphertext, the nonce or the header makes it
-fail instead of returning data. Our tests change every byte of a vault file and every one is
-rejected. GCM needs a new nonce for each encryption with the same key, so every save makes one.
+**3. Why AES-GCM and not AES without authentication? What does the "GCM" part buy you?**
+AES without authentication only hides the data. It does not detect changes: if someone changes the
+ciphertext, it still decrypts, the plaintext comes out different, and the program gives no error
+(a grade 14 can become 18). GCM adds a 16-byte tag. The tag is computed with the key, so an
+attacker who changes the vault file cannot make a matching tag. Every time we decrypt, GCM checks
+the tag first. If the check fails, decryption stops and returns nothing. The file header (the
+salts, the nonce and `master_hash`) is also covered by the tag as associated data, so a change
+there is detected too. In our tests, changing any single byte of the vault file makes decryption
+fail. We also use a new nonce for each save: with the same key and the same nonce, the XOR of the
+two ciphertexts is the XOR of the two plaintexts, which leaks information.
 
-**4. Why `secrets` and not `random`?**
-`random` is the Mersenne Twister, a generator for simulations: after 624 outputs its state can
-be rebuilt and every next value predicted. `secrets` uses the operating system's
-cryptographically secure source, so one password says nothing about the next. 20 characters
-from 94 symbols give about 131 bits.
+**4. Why `secrets` and not `random` for generating passwords?**
+`random` uses the Mersenne Twister. It is deterministic and predictable: after an attacker sees
+624 of its outputs, the attacker can rebuild its state and predict every next value, so the next
+password is not secret. The Python documentation says not to use it for security. `secrets` uses
+the cryptographically secure random source of the operating system (`os.urandom`), so earlier
+outputs say nothing about the next one. The strength of a random password is
+length × log2(number of characters). Our generator picks each character with `secrets.choice`
+from 94 characters (letters, digits and symbols), so each character adds about 6.6 bits. The
+default length of 20 gives about 131 bits, and the user can choose a length from 12 to 128.
 
-## Security model (question 5)
+## Security model
 
-**Protects:** the stored passwords if someone steals `vault.json`. The file holds only AES-GCM
-ciphertext and an Argon2 hash; the master password never touches the disk; each guess costs an
-Argon2 run; any change to the file is detected.
+**5. What your tool does not protect against.**
+
+**Protects:** if someone steals `vault.json`, they get only AES-GCM ciphertext, the salts and an
+Argon2 hash. They cannot read the passwords without the master password, every guess costs one
+Argon2 run, and any change to the file is detected.
 
 **Does not protect against:**
-- a keylogger or other malware on the user's machine (it reads the master password, or the key
-  and entries in memory while a command runs);
-- a weak master password (Argon2 slows guessing, but a dictionary word is still found);
-- someone reading the screen (`get` prints the password);
-- the vault being replaced by an older copy, or deleted;
-- a forgotten master password (no recovery).
+- a keylogger on the user's machine, which records the master password as it is typed;
+- other malware that reads the key and the entries from memory while a command runs;
+- a weak master password: Argon2 makes each guess slow, but a password from a dictionary is still
+  found;
+- someone reading the screen: `get` prints the password;
+- an old copy of `vault.json` put back in place of the current one: it is still a valid file;
+- deleting the file;
+- a forgotten master password: there is no way to recover it.
 
 ## Bonus A — share one entry with a teammate
 
