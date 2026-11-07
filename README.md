@@ -48,12 +48,11 @@ The master password must never be recoverable. AES is two-way: with the key, the
 decrypted back. The key has to be stored somewhere, so it can be stolen together with the database.
 A plain SHA-256 hash is one-way, but it is very fast and has no salt, so the same password always
 gives the same hash, and common passwords can be found at once in a rainbow table. Even with a salt
-it is too fast: in the Class 5 lab we measured about 3.5 million MD5 guesses per second, and
-SHA-256 is a fast hash of the same kind. Argon2 adds a random salt, so the same password gives a
-different hash each time, and a precomputed table is useless. It is also slow and needs a lot of
-memory (3 passes over 64 MiB), so the attacker needs much more time and memory for every guess:
-about 10 guesses per second in our lab. The salt makes precomputed tables useless, and the
-slowness limits how many guesses the attacker can make. We need both.
+it is too fast: in the Class 5 lab we measured about 3.5 million MD5 guesses per second, and SHA-256
+is a fast hash of the same kind. Argon2 adds a random salt, so the same password gives a different
+hash each time, and a precomputed table is useless. It is also slow and needs a lot of memory (3
+passes over 64 MiB), so the attacker needs much more time and memory for every guess: about 10
+guesses per second in our lab. We need both the salt and the slowness.
 
 **2. Why derive the encryption key from the master password instead of storing a key file?**
 If the key is stored in a file next to the vault, it is stolen together with the vault. The
@@ -66,24 +65,24 @@ is that a forgotten master password cannot be recovered: the vault can never be 
 
 **3. Why AES-GCM and not AES without authentication? What does the "GCM" part buy you?**
 AES without authentication only hides the data. It does not detect changes: if someone changes the
-ciphertext, it still decrypts, the plaintext comes out different, and the program gives no error
-(a stored password could be changed this way). GCM adds a 16-byte tag. The tag is computed with the key, so an
-attacker who changes the vault file cannot make a matching tag. Every time we decrypt, GCM checks
-the tag first. If the check fails, decryption stops and returns nothing. The file header (the
-salts, the nonce and `master_hash`) is also covered by the tag as associated data, so a change
+ciphertext, it still decrypts, the plaintext comes out different, and the program gives no error (a
+stored password could be changed this way). GCM adds a 16-byte tag. The tag is computed with the
+key, so an attacker who changes the vault file cannot make a matching tag. Every time we decrypt,
+GCM checks the tag first. If the check fails, decryption stops and returns nothing. The file header
+(the salts, the nonce and `master_hash`) is also covered by the tag as associated data, so a change
 there is detected too. In our tests, changing any single byte of the vault file makes opening the
-vault fail. We also use a new nonce for each save: with the same key and the same nonce, the XOR of the
-two ciphertexts is the XOR of the two plaintexts, which leaks information.
+vault fail. We also use a new nonce for each save: with the same key and the same nonce, the XOR of
+the two ciphertexts is the XOR of the two plaintexts, which leaks information.
 
 **4. Why `secrets` and not `random` for generating passwords?**
-`random` uses the Mersenne Twister. It is deterministic and predictable: after an attacker sees
-624 consecutive 32-bit outputs, the attacker can rebuild its state and predict every next value, so the next
-password is not secret. The Python documentation says not to use it for security. `secrets` uses
-the cryptographically secure random source of the operating system (`os.urandom`), so earlier
-outputs say nothing about the next one. The strength of a random password is
-length × log2(number of characters). Our generator picks each character with `secrets.choice`
-from 94 characters (letters, digits and symbols), so each character adds about 6.6 bits. The
-default length of 20 gives about 131 bits, and the user can choose a length from 12 to 128.
+`random` uses the Mersenne Twister. It is deterministic and predictable: after an attacker sees 624
+consecutive 32-bit outputs, the attacker can rebuild its state and predict every next value, so the
+next password is not secret. The Python documentation says not to use it for security. `secrets`
+uses the cryptographically secure random source of the operating system (`os.urandom`), so earlier
+outputs say nothing about the next one. The strength of a random password is length × log2(number of
+characters). Our generator picks each character with `secrets.choice` from 94 characters (letters,
+digits and symbols), so each character adds about 6.6 bits. The default length of 20 gives about 131
+bits, and the user can choose a length from 12 to 128.
 
 ## Security model
 
