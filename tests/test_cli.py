@@ -38,8 +38,15 @@ class CliTests(unittest.TestCase):
         self.assertIn("gitlab\tbob", listed)
         self.assertNotIn("gh-Pa55word!", listed)
 
-        self.assertIn("password: gh-Pa55word!", self.run_cli("get", "github", stdin=f"{MASTER}\n").stdout)
-        self.assertIn(f"password: {new_password}", self.run_cli("get", "gitlab", stdin=f"{MASTER}\n").stdout)
+        got = self.run_cli("get", "github", stdin=f"{MASTER}\n").stdout
+        self.assertIn("password: gh-Pa55word!", got)
+        got = self.run_cli("get", "gitlab", stdin=f"{MASTER}\n").stdout
+        self.assertIn(f"password: {new_password}", got)
+
+        # A second entry with the same site is refused before any password is typed.
+        again = self.run_cli("add", "github", "--user", "bob", stdin=f"{MASTER}\n")
+        self.assertEqual(1, again.returncode)
+        self.assertIn("already exists", again.stderr)
 
         wrong = self.run_cli("get", "github", stdin="not the master password\n")
         self.assertEqual(1, wrong.returncode)
@@ -73,7 +80,8 @@ class CliTests(unittest.TestCase):
         deep = self.dir / "deep.json"
         deep.write_bytes(b"[" * 200000)
         self.run_cli("keygen", "bob", stdin="bob passphrase 1\nbob passphrase 1\n")
-        received = self.run_cli("receive", "deep.json", "--key", "bob.key.pem", stdin="bob passphrase 1\n")
+        received = self.run_cli("receive", "deep.json", "--key", "bob.key.pem",
+                                stdin="bob passphrase 1\n")
         self.assertEqual(1, received.returncode)
         self.assertIn("modified or damaged", received.stderr)
 
@@ -85,7 +93,8 @@ class CliTests(unittest.TestCase):
 
     def test_share_and_receive(self):
         self.run_cli("init", stdin=f"{MASTER}\n{MASTER}\n")
-        self.run_cli("add", "github", "--user", "alice", stdin=f"{MASTER}\ngh-Pa55word!\ngh-Pa55word!\n")
+        self.run_cli("add", "github", "--user", "alice",
+                     stdin=f"{MASTER}\ngh-Pa55word!\ngh-Pa55word!\n")
         keygen = self.run_cli("keygen", "bob", stdin="bob passphrase 1\nbob passphrase 1\n")
         self.assertEqual(0, keygen.returncode, keygen.stderr)
         shared = self.run_cli("share", "github", "--to", "bob.pub.pem", stdin=f"{MASTER}\n")
@@ -94,6 +103,10 @@ class CliTests(unittest.TestCase):
                                 stdin="bob passphrase 1\n")
         self.assertEqual(0, received.returncode, received.stderr)
         self.assertIn("password: gh-Pa55word!", received.stdout)
+        twice = self.run_cli("share", "github", "--to", "bob.pub.pem", stdin=f"{MASTER}\n")
+        self.assertEqual(1, twice.returncode)
+        self.assertIn("already exists", twice.stderr)
+        self.assertNotIn("Errno", twice.stderr)
 
 
 if __name__ == "__main__":

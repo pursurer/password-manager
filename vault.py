@@ -57,6 +57,8 @@ def cmd_add(args):
     length = password_gen.DEFAULT_LENGTH if args.length is None else args.length
     password = password_gen.generate(length) if args.generate else None
     vault = unlock(args)
+    if args.site in vault.entries:
+        raise VaultError(f"'{args.site}' already exists. Delete it first to replace it.")
     if password is None:
         password = read_new_secret(f"Password for {args.site}: ")
     vault.add(args.site, args.user, password)
@@ -88,7 +90,8 @@ def cmd_delete(args):
 
 def cmd_gen(args):
     print(password_gen.generate(args.length))
-    print(f"(about {password_gen.entropy_bits(args.length):.0f} bits of randomness)", file=sys.stderr)
+    bits = password_gen.entropy_bits(args.length)
+    print(f"(about {bits:.0f} bits of randomness)", file=sys.stderr)
 
 
 def cmd_keygen(args):
@@ -102,8 +105,10 @@ def cmd_keygen(args):
 
 
 def cmd_share(args):
-    entry = unlock(args).get(args.site)
     out = Path(args.out or re.sub(r"[^A-Za-z0-9._-]", "_", args.site).lstrip(".") + ".share.json")
+    if out.exists():
+        raise VaultError(f"{out} already exists. Choose another file with --out.")
+    entry = unlock(args).get(args.site)
     sealed = share.seal(args.site, entry, args.to)
     share.write_new(out, (json.dumps(sealed, indent=2) + "\n").encode("utf-8"), 0o644)
     print(f"Wrote {out}. Only the private key that matches {args.to} can open it.")
@@ -118,27 +123,33 @@ def cmd_receive(args):
         vault.save()
         print(f"Saved {entry['site']} in {args.vault}.")
     else:
-        print(f"site:     {entry['site']}\nusername: {entry['username']}\npassword: {entry['password']}")
+        print(f"site:     {entry['site']}\nusername: {entry['username']}\n"
+              f"password: {entry['password']}")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--vault", type=Path, default=Path(os.environ.get("VAULT_FILE", "vault.json")),
+    default_vault = Path(os.environ.get("VAULT_FILE", "vault.json"))
+    parser.add_argument("--vault", type=Path, default=default_vault,
                         help="vault file (default: $VAULT_FILE or vault.json)")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    commands.add_parser("init", help="set the master password and create an empty vault").set_defaults(func=cmd_init)
+    init = commands.add_parser("init", help="set the master password and create an empty vault")
+    init.set_defaults(func=cmd_init)
 
     add = commands.add_parser("add", help="add an entry")
     add.add_argument("site")
     add.add_argument("--user", required=True)
-    add.add_argument("--generate", action="store_true", help="generate the password instead of typing it")
-    add.add_argument("--length", type=int, help=f"with --generate (default {password_gen.DEFAULT_LENGTH})")
+    add.add_argument("--generate", action="store_true",
+                     help="generate the password instead of typing it")
+    add.add_argument("--length", type=int,
+                     help=f"with --generate (default {password_gen.DEFAULT_LENGTH})")
     add.set_defaults(func=cmd_add)
 
     commands.add_parser("list", help="list sites and usernames").set_defaults(func=cmd_list)
 
-    for name, func, text in (("get", cmd_get, "show one entry"), ("delete", cmd_delete, "delete one entry")):
+    for name, func, text in (("get", cmd_get, "show one entry"),
+                             ("delete", cmd_delete, "delete one entry")):
         command = commands.add_parser(name, help=text)
         command.add_argument("site")
         command.set_defaults(func=func)
@@ -147,11 +158,13 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--length", type=int, default=password_gen.DEFAULT_LENGTH)
     gen.set_defaults(func=cmd_gen)
 
-    keygen = commands.add_parser("keygen", help="bonus A: create an RSA key pair NAME.key.pem / NAME.pub.pem")
+    keygen = commands.add_parser(
+        "keygen", help="bonus A: create an RSA key pair NAME.key.pem / NAME.pub.pem")
     keygen.add_argument("name")
     keygen.set_defaults(func=cmd_keygen)
 
-    share_cmd = commands.add_parser("share", help="bonus A: encrypt one entry for a teammate's public key")
+    share_cmd = commands.add_parser(
+        "share", help="bonus A: encrypt one entry for a teammate's public key")
     share_cmd.add_argument("site")
     share_cmd.add_argument("--to", required=True, help="the teammate's NAME.pub.pem")
     share_cmd.add_argument("--out", help="output file (default: SITE.share.json)")

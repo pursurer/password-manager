@@ -17,7 +17,8 @@ class ShareTests(unittest.TestCase):
     def setUpClass(cls):
         cls.dir = Path(tempfile.mkdtemp())
         cls.bob_key, cls.bob_pub, _ = share.create_keypair(cls.dir / "bob", "bob passphrase 1")
-        cls.carol_key, cls.carol_pub, _ = share.create_keypair(cls.dir / "carol", "carol passphrase 1")
+        cls.carol_key, cls.carol_pub, _ = share.create_keypair(cls.dir / "carol",
+                                                               "carol passphrase 1")
 
     @classmethod
     def tearDownClass(cls):
@@ -27,7 +28,8 @@ class ShareTests(unittest.TestCase):
         return json.dumps(share.seal("github", ENTRY, self.bob_pub)).encode()
 
     def test_private_key_is_encrypted_and_private(self):
-        self.assertTrue(self.bob_key.read_bytes().startswith(b"-----BEGIN ENCRYPTED PRIVATE KEY-----"))
+        pem = self.bob_key.read_bytes()
+        self.assertTrue(pem.startswith(b"-----BEGIN ENCRYPTED PRIVATE KEY-----"))
         self.assertEqual(0o600, self.bob_key.stat().st_mode & 0o777)
 
     def test_recipient_opens_the_entry(self):

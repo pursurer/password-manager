@@ -70,7 +70,8 @@ def seal(site: str, entry: dict, public_key_path) -> dict:
     plaintext = json.dumps({"site": site, **entry}, ensure_ascii=False).encode("utf-8")
     share["wrapped_key"] = b64encode(public_key.encrypt(aes_key, OAEP))
     share["nonce"] = b64encode(nonce)
-    share["ciphertext"] = b64encode(AESGCM(aes_key).encrypt(nonce, plaintext, _associated_data(share)))
+    sealed = AESGCM(aes_key).encrypt(nonce, plaintext, _associated_data(share))
+    share["ciphertext"] = b64encode(sealed)
     return share
 
 
@@ -94,8 +95,8 @@ def open_share(raw: bytes, private_key_path, passphrase: str) -> dict:
         raise VaultError("This share was encrypted for a different key.")
     try:
         aes_key = private_key.decrypt(b64decode(share["wrapped_key"]), OAEP)
-        plaintext = AESGCM(aes_key).decrypt(b64decode(share["nonce"]), b64decode(share["ciphertext"]),
-                                            _associated_data(share))
+        nonce, ciphertext = b64decode(share["nonce"]), b64decode(share["ciphertext"])
+        plaintext = AESGCM(aes_key).decrypt(nonce, ciphertext, _associated_data(share))
         entry = json.loads(plaintext.decode("utf-8"))
     except (ValueError, InvalidTag, TamperedError, RecursionError) as exc:
         raise TamperedError("The share file was modified or damaged.") from exc

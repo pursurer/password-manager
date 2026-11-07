@@ -37,7 +37,9 @@ Each command that opens the vault asks for the master password.
 4. **Strong password generator** — Python's `secrets` module. Each character is
    `secrets.choice` from 94 letters, digits and symbols; the length is 12 to 128 (default 20).
 
-These are the libraries the course rule names; no cryptography is written by hand.
+These are the libraries the course rule names. They are maintained and widely reviewed:
+`argon2-cffi` wraps the reference Argon2 implementation, and `cryptography` uses OpenSSL for
+AES. We only combine them; no cryptography is written by hand.
 
 ## Why each choice is correct
 
@@ -50,8 +52,8 @@ it is too fast: in the Class 5 lab we measured about 3.5 million MD5 guesses per
 SHA-256 is a fast hash of the same kind. Argon2 adds a random salt, so the same password gives a
 different hash each time, and a precomputed table is useless. It is also slow and needs a lot of
 memory (3 passes over 64 MiB), so the attacker needs much more time and memory for every guess:
-about 10 guesses per second in our lab. The salt stops one guess from working on many accounts,
-and the slowness stops many guesses on one account. We need both.
+about 10 guesses per second in our lab. The salt makes precomputed tables useless, and the
+slowness limits how many guesses the attacker can make. We need both.
 
 **2. Why derive the encryption key from the master password instead of storing a key file?**
 If the key is stored in a file next to the vault, it is stolen together with the vault. The
@@ -65,17 +67,17 @@ is that a forgotten master password cannot be recovered: the vault can never be 
 **3. Why AES-GCM and not AES without authentication? What does the "GCM" part buy you?**
 AES without authentication only hides the data. It does not detect changes: if someone changes the
 ciphertext, it still decrypts, the plaintext comes out different, and the program gives no error
-(a grade 14 can become 18). GCM adds a 16-byte tag. The tag is computed with the key, so an
+(a stored password could be changed this way). GCM adds a 16-byte tag. The tag is computed with the key, so an
 attacker who changes the vault file cannot make a matching tag. Every time we decrypt, GCM checks
 the tag first. If the check fails, decryption stops and returns nothing. The file header (the
 salts, the nonce and `master_hash`) is also covered by the tag as associated data, so a change
-there is detected too. In our tests, changing any single byte of the vault file makes decryption
-fail. We also use a new nonce for each save: with the same key and the same nonce, the XOR of the
+there is detected too. In our tests, changing any single byte of the vault file makes opening the
+vault fail. We also use a new nonce for each save: with the same key and the same nonce, the XOR of the
 two ciphertexts is the XOR of the two plaintexts, which leaks information.
 
 **4. Why `secrets` and not `random` for generating passwords?**
 `random` uses the Mersenne Twister. It is deterministic and predictable: after an attacker sees
-624 of its outputs, the attacker can rebuild its state and predict every next value, so the next
+624 consecutive 32-bit outputs, the attacker can rebuild its state and predict every next value, so the next
 password is not secret. The Python documentation says not to use it for security. `secrets` uses
 the cryptographically secure random source of the operating system (`os.urandom`), so earlier
 outputs say nothing about the next one. The strength of a random password is

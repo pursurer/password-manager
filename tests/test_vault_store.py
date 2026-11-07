@@ -83,7 +83,8 @@ class VaultStoreTests(unittest.TestCase):
                         self.path.write_bytes(changed)
                         with self.assertRaises(TamperedError):
                             Vault.open(self.path, MASTER)
-        self.path.write_bytes(original.replace(b'{\n  "format"', b'{\n  "format": "x",\n  "format"', 1))
+        duplicated = original.replace(b'{\n  "format"', b'{\n  "format": "x",\n  "format"', 1)
+        self.path.write_bytes(duplicated)
         with self.assertRaises(TamperedError):
             Vault.open(self.path, MASTER)
 
